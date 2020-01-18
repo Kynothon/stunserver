@@ -1,24 +1,30 @@
-FROM ubuntu:latest
+FROM 	alpine:3.11 AS build
 
-EXPOSE 3478/tcp 3478/udp
+WORKDIR /usr/src
 
-USER root
+RUN 	apk add --no-cache make g++ boost-dev openssl-dev
 
-RUN set -ex && \
-    apt-get update && \
-    apt-get install -y build-essential && \
-    apt-get install -y libboost-all-dev && \
-    apt-get install -y libssl-dev && \
-    apt-get install -y g++ && \
-    apt-get install -y make && \
-    apt-get install -y git && \
-    apt-get clean -y && \
-    rm -rf /var/lib/apt/lists/*
+COPY 	. .
 
-RUN cd /opt && git clone https://github.com/jselbie/stunserver.git && cd stunserver && make
+RUN 	make
+
+FROM 	alpine:3.11 AS release
+
+EXPOSE 	3478/tcp 3478/udp
 
 WORKDIR /opt/stunserver
 
-HEALTHCHECK CMD /opt/stunserver/stunclient localhost
+HEALTHCHECK CMD	/opt/stunserver/stunclient localhost
 
-ENTRYPOINT ["/opt/stunserver/stunserver"]
+RUN 	apk add --no-cache libstdc++ libgcc \
+    	&& addgroup -g 1000 stun \
+    	&& adduser -u 1000 -G stun -s /bin/false -D stun \
+    	&& mkdir -p /opt/stunserver 
+
+COPY --from=build 	/usr/src/stunserver /opt/stunserver/stunserver
+COPY --from=build 	/usr/src/stunclient /opt/stunserver/stunclient
+
+USER 	stun
+
+ENTRYPOINT 	["/opt/stunserver/stunserver"]
+
